@@ -1,32 +1,157 @@
 /**
- * Import function triggers from their respective submodules:
- *
- * const {onCall} = require("firebase-functions/v2/https");
- * const {onDocumentWritten} = require("firebase-functions/v2/firestore");
- *
- * See a full list of supported triggers at https://firebase.google.com/docs/functions
+ * Firebase Functions for Content Moderation using Perspective API
+ * Moderates both messages and tasks
  */
 
-const {setGlobalOptions} = require("firebase-functions");
-const {onRequest} = require("firebase-functions/https");
-const logger = require("firebase-functions/logger");
+const {setGlobalOptions} = require("firebase-functions/v2/options");
+const {onDocumentCreated} = require("firebase-functions/v2/firestore");
+const {initializeApp} = require("firebase-admin/app");
+// const {getFirestore} = require("firebase-admin/firestore");
+const fetch = require("node-fetch");
 
-// For cost control, you can set the maximum number of containers that can be
-// running at the same time. This helps mitigate the impact of unexpected
-// traffic spikes by instead downgrading performance. This limit is a
-// per-function limit. You can override the limit for each function using the
-// `maxInstances` option in the function's options, e.g.
-// `onRequest({ maxInstances: 5 }, (req, res) => { ... })`.
-// NOTE: setGlobalOptions does not apply to functions using the v1 API. V1
-// functions should each use functions.runWith({ maxInstances: 10 }) instead.
-// In the v1 API, each function can only serve one request per container, so
-// this will be the maximum concurrent request count.
-setGlobalOptions({ maxInstances: 10 });
+// Initialize Firebase Admin SDK
+initializeApp();
+// const db = getFirestore();
 
-// Create and deploy your first functions
-// https://firebase.google.com/docs/functions/get-started
+// Limit concurrency
+setGlobalOptions({maxInstances: 10});
 
-// exports.helloWorld = onRequest((request, response) => {
-//   logger.info("Hello logs!", {structuredData: true});
-//   response.send("Hello from Firebase!");
-// });
+/**
+ * Perspective API Key
+ */
+const PERSPECTIVE_API_KEY = "AIzaSyA-cdZObqRImZo6mUrmS6edmaeTqwn_wyA";
+
+/**
+ * Check text with Perspective API
+ * @param {string} text - Text to moderate
+ * @return {Promise<{ flagged: boolean, scores: Object }>}
+ */
+async function moderateContent(text) {
+  try {
+    const url =
+      "https://commentanalyzer.googleapis.com/v1alpha1/comments:analyze?key=" +
+      PERSPECTIVE_API_KEY;
+    const body = {
+      comment: {text: text},
+      languages: ["en"],
+      requestedAttributes: {
+        TOXICITY: {},
+        SEVERE_TOXICITY: {},
+        INSULT: {},
+        THREAT: {},
+        PROFANITY: {},
+        SEXUALLY_EXPLICIT: {},
+      },
+    };
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error("Perspective API Error:", errText);
+      return {flagged: false, scores: {}};
+    }
+
+    const result = await response.json();
+    const scores = {};
+    if (result.attributeScores) {
+      const attrs = result.attributeScores;
+      for (const attr in attrs) {
+        if (
+          attrs[attr] &&
+          attrs[attr].summaryScore &&
+          attrs[attr].summaryScore.value !== undefined
+        ) {
+          scores[attr] = attrs[attr].summaryScore.value;
+        }
+      }
+    }
+
+    let flagged = false;
+    for (const key in scores) {
+      if (scores[key] > 0.8) {
+        flagged = true;
+        break;
+      }
+    }
+
+    return {flagged: flagged, scores: scores};
+  } catch (err) {
+    console.error("Error moderating content:", err);
+    return {flagged: false, scores: {}};
+  }
+}
+
+/**
+ * Cloud Function: Moderate Messages
+ */
+exports.moderateMessages = onDocumentCreated(
+    "messages/{messageId}",
+    async (event) => {
+      const snap = event.data;
+      if (!snap) return;
+
+      const messageData = snap.data();
+      if (!messageData) return;
+
+      let text = "";
+      if (messageData.text) {
+        text = messageData.text;
+      }
+
+      console.log("Checking message:", text);
+
+      const moderation = await moderateContent(text);
+
+      const updateData = {
+        flagged: moderation.flagged,
+        moderationScores: moderation.scores,
+      };
+
+      await snap.ref.update(updateData);
+
+      console.log(
+      moderation.flagged ? "⚠️ Message flagged" : "✅ Message safe",
+      );
+    },
+);
+
+/**
+ * Cloud Function: Moderate Tasks
+ */
+exports.moderateTasks = onDocumentCreated(
+    "tasks/{taskId}",
+    async (event) => {
+      const snap = event.data;
+      if (!snap) return;
+
+      const taskData = snap.data();
+      if (!taskData) return;
+
+      let text = "";
+      if (taskData.title) {
+        text = taskData.title;
+      }
+
+      if (taskData.description) {
+        text += " " + taskData.description;
+      }
+
+      console.log("Checking task:", text);
+
+      const moderation = await moderateContent(text);
+
+      const updateData = {
+        flagged: moderation.flagged,
+        moderationScores: moderation.scores,
+      };
+
+      await snap.ref.update(updateData);
+
+      console.log(moderation.flagged ? "⚠️ Task flagged" : "✅ Task safe");
+    },
+);
