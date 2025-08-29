@@ -1,0 +1,97 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // USERS COLLECTION RULES
+    match /users/{userID} {
+      allow read: if request.auth != null;
+      allow create: if request.auth.uid == userID;
+      // Allow updates to user documents
+      allow update: if request.auth != null && (
+        // User can update their own document
+        request.auth.uid == userID ||
+        
+        // OR another user can update ratings field only
+        (
+          // Only these fields are being changed
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['averageRating', 'totalRatings']) &&
+          
+          // Make sure they're valid numbers
+          request.resource.data.averageRating is number &&
+          request.resource.data.totalRatings is number
+        )
+      );
+      
+      allow delete: if request.auth.uid != null;
+    }
+	match /artifacts/{appId}/users/{userId}/{collection=**} {
+  allow read, write, delete: if request.auth != null ;
+}
+    // TASK RULES
+    match /tasks/{taskId} {
+      // Allow read access to all tasks.
+      allow read: if request.auth != null;
+      // Allow any authenticated user to create a task.
+      allow create: if request.auth != null;
+      // Allow updates to a task if:
+      allow update: if (
+        request.auth.uid == resource.data.creatorID || // 1. User is the creator
+        (resource.data.status == "available" && request.auth.uid != resource.data.creatorID) || // 2. Task is available and user is not the creator
+        isUserInAssignees(request.auth.uid, resource.data.assignees) // 3. User is in assignees
+      );
+      // Allow the creator of the task to delete it.
+      allow delete: if request.auth.uid == resource.data.creatorID;
+    }
+
+    // CHAT RULES
+    match /chats/{chatId} {
+      // Allow all authenticated users to read and write to any chat.
+      allow read, write: if request.auth != null;
+      match /messages/{messageId} {
+        // Allow all authenticated users to read and write messages.
+        allow read, write: if request.auth != null;
+      }
+    }
+
+    // NOTIFICATIONS RULES
+    match /notifications/{notificationId} {
+      //  A user can only read their own notifications.
+      allow read: if request.auth != null && resource.data.userID == request.auth.uid;
+      // Allow any authenticated user to create a notification.
+      allow create: if request.auth != null;
+      // A user can update their own notifications.
+      allow update: if request.auth != null && resource.data.userID == request.auth.uid;
+      // A user can delete their own notifications.
+      allow delete: if request.auth != null && resource.data.userID == request.auth.uid;
+    }
+    
+    // USER RATINGS
+    match /users/{userId} {
+       allow update: if request.auth != null && (
+        request.auth.uid == userId
+        // || (
+        //     request.resource.data.keys().hasAny(['ratings']) &&
+        //     request.resource.data.ratings is map &&
+        //     request.resource.data.ratings[request.auth.uid] is map &&
+        //     request.resource.data.ratings[request.auth.uid].ratingValue is int &&
+        //     request.resource.data.ratings[request.auth.uid].taskId is string &&
+        //     request.resource.data.ratings[request.auth.uid].timestamp is timestamp &&
+        //     request.auth.uid != userId &&
+        //     isUserInvolvedInTask(request.auth.uid, request.resource.data.ratings[request.auth.uid].taskId) &&
+        //     isUserInvolvedInTask(userId, request.resource.data.ratings[request.auth.uid].taskId)
+           // )
+        );
+    }
+  }
+
+  // Helper Functions
+  function isUserInAssignees(userId, assignees) {
+    return assignees != null && assignees.hasAny([{ 'userId': userId }]);
+  }
+
+  function isUserInvolvedInTask(userId, taskId) {
+    let task = get(/databases/$(database)/documents/tasks/$(taskId)).data;
+    let isCreator = task.creatorId == userId;
+    let isAssignee = task.assignees != null && task.assignees.hasAny([{ 'userId': userId }]);
+    return isCreator || isAssignee;
+  }
+}
