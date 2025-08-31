@@ -15,7 +15,7 @@ setGlobalOptions({maxInstances: 10});
 
 // Perspective API Key
 const PERSPECTIVE_API_KEY =
-  "AIzaSyA0222nB3f9jsfJ9O3LFnEf5b0Cxo_W-lE";
+  "perspective api key here";
 
 /**
  * Send text to Perspective API for moderation
