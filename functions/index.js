@@ -78,9 +78,9 @@ const BLACKLIST = [
   "asslick", "fistfuck", "gokkun", "handjob", "blowjob", "titfuck", "boobjob", "anal", "assholelicker", "pussylicker",
 
   // Violent / threatening terms
-  "kill yourself", "die", "murder", "stab", "shoot", "hang", "bomb", "terrorist", "assassinate", "rape", "molest", "beat",
-  "choke", "lynch", "slaughter", "decapitate", "maim", "torture", "kill", "massacre", "executed", "bloodbath", "slay",
-  "destroy", "wipe out", "annihilate", "killin", "assault", "attack", "threat", "terror", "terrorize", "terrorism", "blow up",
+  "kill yourself", "die", "murder", "stab", "shoot", "hang", "bomb", "terrorist", "assassinate", "rape", "molest",
+  "choke", "lynch", "slaughter", "decapitate", "maim", "torture", "kill", "massacre", "executed", "bloodbath",
+  "destroy", "wipe out", "annihilate", "killin", "assault", "attack", "threat", "terror", "terrorize", "terrorism",
 
   // Obfuscated / leetspeak variants
   "f4gg0t", "n1gger", "n1gga", "sh1t", "b1tch", "c0ck", "d1ck", "puss1", "slut", "wh0re", "cunt", "t1ts", "fuk", "fuker",
